@@ -35,10 +35,11 @@ wrapErr a = liftIO a >>= liftErr
 
 main :: IO ()
 main = do
-  [ttfPath,ptStr,dpiXStr,dpiYStr] <- getArgs
+  [ttfPath,ptStr,dpiXStr,dpiYStr,paddingStr] <- getArgs
   let pt = read ptStr
       dpiX = read dpiXStr
       dpiY = read dpiYStr
+      padding = read paddingStr
   r <- alloca $ \ftlibPtr ->
     alloca $ \facePtr -> runEitherT $ do
       wrapErr $ ft_Init_FreeType ftlibPtr
@@ -59,22 +60,21 @@ main = do
           liftIO $ do
             top <- fmap fromIntegral $ peek $ bitmap_top glph
             left <- peek $ bitmap_left glph
-            let topFill = rws - top
-                rws = fromIntegral $ rows btmp
+            let rws = fromIntegral $ rows btmp
                 w = fromIntegral $ width btmp
-            when (topFill > 0) $
-              putStr . unlines $ replicate topFill (replicate w '.')
-            putStr (unlines pixels)
-            when (topFill < 0) $
-              putStr . unlines $ replicate (-topFill) (replicate w '.')
-            putStrLn ""
-            print rws
-            print w
-            print top
-            print left
-            print topFill
-          pure pixels
-      pure ()
+            putStrLn $ "rows: " ++ show rws
+            putStrLn $ "width: " ++ show w
+            putStrLn $ "top: " ++ show top
+            putStrLn $ "left: " ++ show left
+            pure (rws,w,pixels)
+      let (maxRow,_,maxG) = maximumBy (\(a,_,_) (b,_,_) -> compare a b) (concat bitmaps)
+          (_,maxWidth,maxGW) = maximumBy (\(_,a,_) (_,b,_) -> compare a b) (concat bitmaps)
+          bitmaps' = map (mergeBitmapLine (maxRow + padding) . map (resize (maxRow + padding) (maxWidth + padding))) bitmaps
+      for_ bitmaps' $ \line -> do
+        for_ line $ \c -> do
+          liftIO . putStr $ unlines c
+          pure ()
+      liftIO $ putStrLn ""
   case r of
     Left err -> putStrLn err
     Right () -> putStrLn "a plus dans l'bus"
@@ -104,3 +104,15 @@ extractBitmap btmp = go 0 (buffer btmp)
           pure $ line : nextLines
       | otherwise = pure []
 
+resize :: Int -> Int -> (Int,Int,[[Char]]) -> [[Char]]
+resize maxRow maxWidth (rws,w,pixels) = pixels' ++ replicate (maxRow - rws) (replicate maxWidth '.')
+  where
+    pixels' = map (++ pad) pixels
+    pad = replicate (maxWidth - w) '.'
+
+-- Merge a line of bitmaps as one.
+mergeBitmapLine :: Int -> [[[Char]]] -> [[[Char]]]
+mergeBitmapLine _ [] = []
+mergeBitmapLine remainingRows line
+  | remainingRows > 0 = [concatMap head line] : mergeBitmapLine (pred remainingRows) (map tail line)
+  | otherwise = line
