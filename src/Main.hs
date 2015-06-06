@@ -9,6 +9,7 @@
 --
 ----------------------------------------------------------------------------
 
+import Codec.Picture
 import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.Trans
@@ -16,6 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Bits
 import Data.Foldable
 import Data.Traversable
+import Data.Vector.Storable ( fromList )
 import Foreign
 import Foreign.C.String
 import Graphics.Rendering.FreeType.Internal
@@ -35,7 +37,7 @@ wrapErr a = liftIO a >>= liftErr
 
 main :: IO ()
 main = do
-  [ttfPath,ptStr,dpiXStr,dpiYStr,paddingStr] <- getArgs
+  [ttfPath,ptStr,dpiXStr,dpiYStr,paddingStr,output] <- getArgs
   let pt = read ptStr
       dpiX = read dpiXStr
       dpiY = read dpiYStr
@@ -46,14 +48,15 @@ main = do
       ftlib <- liftIO $ peek ftlibPtr
       wrapErr . withCString ttfPath $ \cttfPath ->
         ft_New_Face ftlib cttfPath 0 facePtr
-      face <- liftIO $ peek facePtr
-      wrapErr $ ft_Set_Char_Size face 0 (pt*64) dpiX dpiY
+      fc <- liftIO $ peek facePtr
+      wrapErr $ ft_Set_Char_Size fc 0 (pt*64) dpiX dpiY
       alphabet <- liftIO $ fmap lines getContents
+      let alphabetSize = length alphabet
       bitmaps <- for alphabet $ \line -> do
         for line $ \c -> do
           liftIO . putStrLn $ "processing char: " ++ show c
-          wrapErr $ ft_Load_Char face (fromIntegral $ fromEnum c) (ft_LOAD_RENDER .|. ft_LOAD_MONOCHROME)
-          glph <- liftIO . peek $ glyph face
+          wrapErr $ ft_Load_Char fc (fromIntegral $ fromEnum c) (ft_LOAD_RENDER .|. ft_LOAD_MONOCHROME)
+          glph <- liftIO . peek $ glyph fc
           btmp <- liftIO . peek $ bitmap glph
           unless (pixel_mode btmp == 1) . throwError $ show c ++ " is not encoded as a monochrome bitmap"
           pixels <- liftIO $ extractBitmap btmp
@@ -66,21 +69,17 @@ main = do
             putStrLn $ "width: " ++ show w
             putStrLn $ "top: " ++ show top
             putStrLn $ "left: " ++ show left
-            pure (rws,w,pixels)
+            pure (rws,w, pixels)
       let (maxRow,_,maxG) = maximumBy (\(a,_,_) (b,_,_) -> compare a b) (concat bitmaps)
           (_,maxWidth,maxGW) = maximumBy (\(_,a,_) (_,b,_) -> compare a b) (concat bitmaps)
           bitmaps' = map (mergeBitmapLine (maxRow + padding) . map (resize (maxRow + padding) (maxWidth + padding))) bitmaps
-      for_ bitmaps' $ \line -> do
-        for_ line $ \c -> do
-          liftIO . putStr $ unlines c
-          pure ()
-      liftIO $ putStrLn ""
+      liftIO $ savePngImage output (ImageY8 $ turnToFontmap (length alphabet * (maxRow + padding)) (length (alphabet !! 0) * (maxWidth + padding)) bitmaps')
   case r of
     Left err -> putStrLn err
     Right () -> putStrLn "a plus dans l'bus"
 
-unpackPixels :: Word8 -> [Char]
-unpackPixels p = map (\x -> if x == 0 then '.' else 'X')
+unpackPixels :: Word8 -> [Word8]
+unpackPixels p = map (\x -> if x == 0 then 0 else 255)
   [
     p .&. 128
   , p .&. 64
@@ -92,7 +91,7 @@ unpackPixels p = map (\x -> if x == 0 then '.' else 'X')
   , p .&. 1
   ]
 
-extractBitmap :: FT_Bitmap -> IO [[Char]]
+extractBitmap :: FT_Bitmap -> IO [[Word8]]
 extractBitmap btmp = go 0 (buffer btmp)
   where
     rws = rows btmp
@@ -104,15 +103,20 @@ extractBitmap btmp = go 0 (buffer btmp)
           pure $ line : nextLines
       | otherwise = pure []
 
-resize :: Int -> Int -> (Int,Int,[[Char]]) -> [[Char]]
-resize maxRow maxWidth (rws,w,pixels) = pixels' ++ replicate (maxRow - rws) (replicate maxWidth '.')
+resize :: Int -> Int -> (Int,Int,[[Word8]]) -> [[Word8]]
+resize maxRow maxWidth (rws,w,pixels) = pixels' ++ replicate (maxRow - rws) (replicate maxWidth 0)
   where
     pixels' = map (++ pad) pixels
-    pad = replicate (maxWidth - w) '.'
+    pad = replicate (maxWidth - w) 0
 
+-- FIXME
 -- Merge a line of bitmaps as one.
-mergeBitmapLine :: Int -> [[[Char]]] -> [[[Char]]]
+mergeBitmapLine :: Int -> [[[Word8]]] -> [[[Word8]]]
 mergeBitmapLine _ [] = []
 mergeBitmapLine remainingRows line
   | remainingRows > 0 = [concatMap head line] : mergeBitmapLine (pred remainingRows) (map tail line)
-  | otherwise = line
+  | otherwise = []
+
+-- Build an image out of the rendered glyphs
+turnToFontmap :: Int -> Int -> [[[[Word8]]]] -> Image Pixel8
+turnToFontmap rowNb w glyphs = Image w rowNb (fromList . concat . concat $ concat glyphs)
