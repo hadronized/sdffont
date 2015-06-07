@@ -9,7 +9,7 @@
 --
 ----------------------------------------------------------------------------
 
-import Codec.Picture
+import qualified Codec.Picture as JP
 import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.Trans
@@ -73,7 +73,7 @@ main = do
       let (maxRow,_,maxG) = maximumBy (\(a,_,_) (b,_,_) -> compare a b) (concat bitmaps)
           (_,maxWidth,maxGW) = maximumBy (\(_,a,_) (_,b,_) -> compare a b) (concat bitmaps)
           bitmaps' = map (mergeBitmapLine (maxRow + padding) . map (resize (maxRow + padding) (maxWidth + padding))) bitmaps
-      liftIO $ savePngImage output (ImageY8 $ turnToFontmap (length alphabet * (maxRow + padding)) (length (alphabet !! 0) * (maxWidth + padding)) bitmaps')
+      liftIO $ JP.savePngImage output (JP.ImageY8 $ turnToFontmap (length alphabet * (maxRow + padding)) (length (alphabet !! 0) * (maxWidth + padding)) bitmaps')
   case r of
     Left err -> putStrLn err
     Right () -> putStrLn "a plus dans l'bus"
@@ -118,5 +118,5 @@ mergeBitmapLine remainingRows line
   | otherwise = []
 
 -- Build an image out of the rendered glyphs
-turnToFontmap :: Int -> Int -> [[[[Word8]]]] -> Image Pixel8
-turnToFontmap rowNb w glyphs = Image w rowNb (fromList . concat . concat $ concat glyphs)
+turnToFontmap :: Int -> Int -> [[[[Word8]]]] -> JP.Image JP.Pixel8
+turnToFontmap rowNb w glyphs = JP.Image w rowNb (fromList . concat . concat $ concat glyphs)
