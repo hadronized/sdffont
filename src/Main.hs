@@ -17,7 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Bits
 import Data.Foldable
 import Data.Traversable
-import Data.Vector.Storable ( fromList )
+import Data.Vector.Storable ( Vector, fromList )
 import Foreign
 import Foreign.C.String
 import qualified Graphics.Rendering.FreeType.Internal as FT
@@ -26,6 +26,16 @@ import qualified Graphics.Rendering.FreeType.Internal.Face as FT
 import qualified Graphics.Rendering.FreeType.Internal.GlyphSlot as FT
 import qualified Graphics.Rendering.FreeType.Internal.PrimitiveTypes as FT
 import System.Environment
+
+-- Pixel in the fontmap. [Pixel] is a line of pixels, but Vector Pixel might be
+-- prefered though for O(1) on random access.
+type Pixel = Word8
+
+-- A glyph is represented as several pixel lines.
+type Glyph = Vector (Vector Pixel)
+
+-- A fontmap is encoded as several glyph lines.
+type Fontmap = Vector (Vector Glyph)
 
 -- Get the alphabet from MonadIO m.
 --
@@ -49,11 +59,14 @@ padAlphabet alpha = map fillGaps alpha
     fillGaps line = line ++ replicate (maxWidth - length line) '\0'
     maxWidth = maximum $ map length alpha
 
+-- Lift a FreeType error into 'MonadError String'.
 liftErr :: (MonadError String m) => FT.FT_Error -> m ()
 liftErr e
   | e == 0 = pure ()
   | otherwise = throwError $ "FreeType error: " ++ show e
 
+-- That function can be used to turn FreeType functions that return
+-- errors into 'MonadError String m' actions.
 wrapErr :: (MonadIO m,MonadError String m) => IO FT.FT_Error -> m ()
 wrapErr a = liftIO a >>= liftErr
 
