@@ -27,6 +27,28 @@ import qualified Graphics.Rendering.FreeType.Internal.GlyphSlot as FT
 import qualified Graphics.Rendering.FreeType.Internal.PrimitiveTypes as FT
 import System.Environment
 
+-- Get the alphabet from MonadIO m.
+--
+-- Because of the format of the input, it’s possible that holes exist in the
+-- alphabet, as following:
+--
+--  abcdef
+--  ghijkl
+--  mno
+--
+-- In that case, the last line has three symbols missing to complete the line.
+-- That function is not responsible of taking care of any kind of padding.
+-- See 'padAlphabet' for such a use.
+getAlphabet :: (MonadIO m) => m [[Char]]
+getAlphabet = liftIO $ fmap lines getContents
+
+-- Pad the alphabet by inserting '\0' at end of incomplete lines.
+padAlphabet :: [[Char]] -> [[Char]]
+padAlphabet alpha = map fillGaps alpha
+  where
+    fillGaps line = line ++ replicate (maxWidth - length line) '\0'
+    maxWidth = maximum $ map length alpha
+
 liftErr :: (MonadError String m) => FT.FT_Error -> m ()
 liftErr e
   | e == 0 = pure ()
@@ -50,7 +72,7 @@ main = do
         FT.ft_New_Face ftlib cttfPath 0 facePtr
       face <- liftIO $ peek facePtr
       wrapErr $ FT.ft_Set_Char_Size face 0 (pt*64) dpiX dpiY
-      alphabet <- liftIO $ fmap lines getContents
+      alphabet <- fmap padAlphabet getAlphabet
       let alphabetSize = length alphabet
       bitmaps <- for alphabet $ \line -> do
         for line $ \c -> do
