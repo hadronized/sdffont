@@ -18,7 +18,8 @@ cabal-version:       >=1.10
 executable sdffont
   ghc-options:         -W -Wall
   main-is:             Main.hs
-  default-extensions:  FlexibleContexts
+  default-extensions:  BangPatterns
+                     , FlexibleContexts
   build-depends:       base >= 4.8 && < 4.9
                      , mtl >= 2.2 && < 2.3
                      , either >= 4.4 && < 4.5
