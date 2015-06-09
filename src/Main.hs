@@ -199,7 +199,6 @@ resizeBitmap width rows maxWidth maxRow bitmap = pixels' <> V.replicate (maxRow 
     pixels' = fmap (<> pad) bitmap
     pad = V.replicate (maxWidth - width) 0
 
--- TODO: get rid of the singleton
 -- Merge a line of Bitmaps.
 mergeBitmapLine :: Int -> Vector Bitmap -> Vector Bitmap 
 mergeBitmapLine remainingRows line
