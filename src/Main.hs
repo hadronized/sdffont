@@ -102,14 +102,12 @@ processFont fontPath alphabet output pt dpix dpiy padding = do
       wrapErr $ FT.ft_Set_Char_Size face 0 (fromIntegral pt * 64)
         (fromIntegral dpix) (fromIntegral dpiy)
       fontmap <- traverse (traverse $ createGlyph face) alphabet'
-      let bitmaps = fmap (mergeBitmapLine maxRows . fmap (\(w,h,_,_,p) -> resizeBitmap w h maxWidth maxRows p)) fontmap
+      let bitmaps = fmap (mergeBitmapLine (maxRows + 2 * padding) . fmap (\(w,h,_,_,p) -> padBitmap padding maxWidth $ resizeBitmap w h maxWidth maxRows p)) fontmap
           fontmap' = V.concat (toList fontmap)
           (maxWidth,_,_,_,_) = maximumBy (\(a,_,_,_,_) (b,_,_,_,_) -> compare a b) fontmap'
           (_,maxRows,_,_,_) = maximumBy (\(_,a,_,_,_) (_,b,_,_,_) -> compare a b) fontmap'
-      liftIO . putStrLn $ "max width: " ++ show maxWidth
-      liftIO . putStrLn $ "max height: " ++ show maxRows
       liftIO . JP.savePngImage output . JP.ImageY8 $ fontmapToImage
-        (maxWidth * length (head alphabet)) (maxRows * length alphabet) bitmaps
+        ((maxWidth + 2 * padding) * length (head alphabet)) ((maxRows + 2 * padding) * length alphabet) bitmaps
   where
     alphabet' = fromList $ (map fromList) alphabet
 
@@ -191,13 +189,22 @@ extractBitmap bitmap = fmap fromList $ go 0 (FT.buffer bitmap)
           pure $ line : nextLines
       | otherwise = pure []
 
--- 'resizeBitmap maxWidth maxRow bitmap' resizes 'bitmap' by resizing it
+-- 'resizeBitmap width rows maxWidth maxRow bitmap' resizes 'bitmap' by resizing it
 -- regarding the 'maxWidth' and 'maxRows' arguments.
 resizeBitmap :: Int -> Int -> Int -> Int -> Bitmap -> Bitmap
 resizeBitmap width rows maxWidth maxRow bitmap = pixels' <> V.replicate (maxRow - rows) (V.replicate maxWidth 0)
   where
     pixels' = fmap (<> pad) bitmap
     pad = V.replicate (maxWidth - width) 0
+
+-- Pad a Bitmap by adding padding around the bitmap (top, bottom, left and
+-- right).
+padBitmap :: Int -> Int -> Bitmap -> Bitmap
+padBitmap padding maxWidth bitmap =
+    fmap (\line -> hpad <> line <> hpad) (vpad <> bitmap <> vpad)
+  where
+    hpad = V.replicate padding 0
+    vpad = V.replicate padding $ V.replicate maxWidth 0
 
 -- Merge a line of Bitmaps.
 mergeBitmapLine :: Int -> Vector Bitmap -> Vector Bitmap 
