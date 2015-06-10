@@ -106,8 +106,10 @@ processFont fontPath alphabet output pt dpix dpiy padding = do
           fontmap' = V.concat (toList fontmap)
           (maxWidth,_,_,_,_) = maximumBy (\(a,_,_,_,_) (b,_,_,_,_) -> compare a b) fontmap'
           (_,maxRows,_,_,_) = maximumBy (\(_,a,_,_,_) (_,b,_,_,_) -> compare a b) fontmap'
-      liftIO . JP.savePngImage output . JP.ImageY8 $ fontmapToImage
-        ((maxWidth + 2 * padding) * length (head alphabet)) ((maxRows + 2 * padding) * length alphabet) bitmaps
+          img = JP.ImageY8 $ fontmapToImage
+            ((maxWidth + 2 * padding) * length (head alphabet))
+            ((maxRows + 2 * padding) * length alphabet) bitmaps
+      liftIO $ JP.savePngImage output img
   where
     alphabet' = fromList $ (map fromList) alphabet
 
@@ -207,7 +209,7 @@ padBitmap padding maxWidth bitmap =
     vpad = V.replicate padding $ V.replicate maxWidth 0
 
 -- Merge a line of Bitmaps.
-mergeBitmapLine :: Int -> Vector Bitmap -> Vector Bitmap 
+mergeBitmapLine :: Int -> Vector Bitmap -> Vector Bitmap
 mergeBitmapLine remainingRows line
   | line == mempty = mempty
   | remainingRows > 0 = fmap V.head line `cons` mergeBitmapLine (pred remainingRows) (fmap V.tail line)
